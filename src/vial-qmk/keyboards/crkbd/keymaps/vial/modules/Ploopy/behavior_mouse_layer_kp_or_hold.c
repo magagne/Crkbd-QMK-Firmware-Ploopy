@@ -6,12 +6,42 @@
 struct kp_or_hold_state {
     bool active;
     bool triggered;
+    bool tap_sent;
     uint8_t layer;
     uint8_t tap_keycode;
     uint16_t started_at;
 };
 
 static struct kp_or_hold_state kp_or_hold_states[MATRIX_ROWS][MATRIX_COLS];
+
+static void kp_or_hold_handle_rollover(uint16_t keycode,
+                                       keyrecord_t *record) {
+    if (!record->event.pressed || IS_MODIFIER_KEYCODE(keycode)) {
+        return;
+    }
+
+    uint8_t pressed_row = record->event.key.row;
+    uint8_t pressed_col = record->event.key.col;
+
+    for (uint8_t row = 0; row < MATRIX_ROWS; row++) {
+        for (uint8_t col = 0; col < MATRIX_COLS; col++) {
+            struct kp_or_hold_state *state = &kp_or_hold_states[row][col];
+            if (!state->active || state->triggered || state->tap_sent ||
+                (row == pressed_row && col == pressed_col)) {
+                continue;
+            }
+
+            if (timer_elapsed(state->started_at) >=
+                PLOOPY_MOUSE_LAYER_TAPPING_TERM) {
+                state->triggered = true;
+                behavior_hold_mouse_layer_update(state->layer, true);
+            } else {
+                tap_code(state->tap_keycode);
+                state->tap_sent = true;
+            }
+        }
+    }
+}
 
 static bool kp_or_hold_keycode(uint16_t keycode, uint8_t *layer,
                                uint8_t *tap_keycode) {
@@ -43,6 +73,8 @@ static bool kp_or_hold_keycode(uint16_t keycode, uint8_t *layer,
 
 bool behavior_mouse_layer_kp_or_hold_process(uint16_t keycode,
                                              keyrecord_t *record) {
+    kp_or_hold_handle_rollover(keycode, record);
+
     uint8_t layer;
     uint8_t tap_keycode;
     if (!kp_or_hold_keycode(keycode, &layer, &tap_keycode)) {
@@ -59,6 +91,7 @@ bool behavior_mouse_layer_kp_or_hold_process(uint16_t keycode,
     if (record->event.pressed) {
         state->active = true;
         state->triggered = false;
+        state->tap_sent = false;
         state->layer = layer;
         state->tap_keycode = tap_keycode;
         state->started_at = timer_read();
@@ -72,7 +105,7 @@ bool behavior_mouse_layer_kp_or_hold_process(uint16_t keycode,
 
         if (state->triggered) {
             behavior_hold_mouse_layer_update(state->layer, false);
-        } else {
+        } else if (!state->tap_sent) {
             tap_code(state->tap_keycode);
         }
         state->active = false;
@@ -85,7 +118,7 @@ void behavior_mouse_layer_kp_or_hold_task(void) {
     for (uint8_t row = 0; row < MATRIX_ROWS; row++) {
         for (uint8_t col = 0; col < MATRIX_COLS; col++) {
             struct kp_or_hold_state *state = &kp_or_hold_states[row][col];
-            if (!state->active || state->triggered ||
+            if (!state->active || state->triggered || state->tap_sent ||
                 timer_elapsed(state->started_at) <
                     PLOOPY_MOUSE_LAYER_TAPPING_TERM) {
                 continue;
