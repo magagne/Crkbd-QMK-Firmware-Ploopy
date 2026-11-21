@@ -20,16 +20,21 @@ enum combo_internal_keycodes {
     COMBO_BRIGHTNESS_DOWN,
 };
 
-static const vial_combo_entry_t zmk_combo_defaults[VIAL_COMBO_ENTRIES] = {
-    {.input = {LSFT(KC_1), RALT(KC_LBRC)}, .output = Macro_M10},
-    {.input = {RALT(KC_8), LSFT(KC_2)}, .output = Macro_M11},
-    {.input = {KC_INSERT, HOST_LINE_END_KEY}, .output = Macro_M12},
-    /* This shared key represents Cmd+Shift+4 on Mac and Print Screen on Windows. */
-    {.input = {HOST_SCREENSHOT_KEY, KC_CAPS_LOCK}, .output = Macro_M13},
-    {.input = {KC_J, KC_M}, .output = COMBO_BRIGHTNESS_UP},
-    {.input = {KC_K, KC_M}, .output = COMBO_BRIGHTNESS_DOWN},
-    {.input = {KC_B, KC_G}, .output = KC_AUDIO_VOL_UP},
-    {.input = {KC_V, KC_G}, .output = KC_AUDIO_VOL_DOWN},
+enum vial_combo_indices {
+#define VIAL_COMBO(name, input_0, input_1, output) name,
+#include "combos.def"
+#undef VIAL_COMBO
+    VIAL_COMBO_COUNT,
+};
+
+_Static_assert(VIAL_COMBO_COUNT == VIAL_COMBO_ENTRIES,
+               "combos.def entry count must match VIAL_COMBO_ENTRIES");
+
+static const vial_combo_entry_t zmk_combo_defaults[VIAL_COMBO_COUNT] = {
+#define VIAL_COMBO(name, input_0, input_1, keycode) \
+    [name] = {.input = {input_0, input_1}, .output = keycode},
+#include "combos.def"
+#undef VIAL_COMBO
 };
 
 extern combo_t key_combos[VIAL_COMBO_ENTRIES];
@@ -114,17 +119,16 @@ bool combo_should_trigger(uint16_t combo_index, combo_t *combo,
     (void)record;
 
     switch (combo_index) {
-        case 0:
-        case 1:
+        case VIAL_COMBO_MACRO_M10:
+        case VIAL_COMBO_MACRO_M11:
             return layer == 2 || layer == 6;
-        case 2:
+        case VIAL_COMBO_MACRO_M12:
+        case VIAL_COMBO_MACRO_M13:
             return layer == 1 || layer == 5;
-        case 3:
-            return layer == 1 || layer == 5;
-        case 4:
-        case 5:
-        case 6:
-        case 7:
+        case VIAL_COMBO_BRIGHTNESS_UP:
+        case VIAL_COMBO_BRIGHTNESS_DOWN:
+        case VIAL_COMBO_VOLUME_UP:
+        case VIAL_COMBO_VOLUME_DOWN:
             return layer == 0 || layer == 4;
         default:
             return true;
